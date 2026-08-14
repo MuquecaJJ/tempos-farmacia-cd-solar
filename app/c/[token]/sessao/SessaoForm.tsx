@@ -11,7 +11,7 @@ import {
   salvarSessaoAtiva,
   encerrarSessaoAtiva,
 } from "@/lib/sessao-storage";
-import type { Colaborador, Papel, SessaoAtiva, TipoColeta, Turno } from "@/lib/types";
+import type { Colaborador, Papel, Processo, SessaoAtiva, TipoColeta, Turno } from "@/lib/types";
 
 const DISPOSITIVOS = ["CEL-01", "CEL-02", "CEL-03", "CEL-04"];
 
@@ -30,10 +30,12 @@ export function SessaoForm({
   token,
   colaboradores,
   papeis,
+  processos,
 }: {
   token: string;
   colaboradores: Colaborador[];
   papeis: Papel[];
+  processos: Processo[];
 }) {
   const router = useRouter();
 
@@ -41,6 +43,7 @@ export function SessaoForm({
   const [sessaoAtiva, setSessaoAtiva] = useState<SessaoAtiva | null | undefined>(undefined);
 
   const [colaboradorId, setColaboradorId] = useState<number | null>(null);
+  const [processoId, setProcessoId] = useState<number | null>(null);
   const [papelId, setPapelId] = useState<number | null>(null);
   const [turno, setTurno] = useState<Turno | null>(null);
   const [tipoColeta, setTipoColeta] = useState<TipoColeta | null>(null);
@@ -74,6 +77,7 @@ export function SessaoForm({
         <h1 className="text-xl font-semibold text-[#5F0040]">Sessão ativa</h1>
         <div className="rounded-lg border border-neutral-300 bg-white p-4 text-sm">
           <p><strong>Colaborador:</strong> {sessaoAtiva.colaboradorNome}</p>
+          <p><strong>Macroprocesso:</strong> {sessaoAtiva.processoNome}</p>
           <p><strong>Papel:</strong> {sessaoAtiva.papelNome}</p>
           <p><strong>Turno:</strong> {sessaoAtiva.turno}</p>
           <p><strong>Tipo:</strong> {sessaoAtiva.tipoColeta}</p>
@@ -102,7 +106,7 @@ export function SessaoForm({
   async function abrirSessao() {
     setErro(null);
 
-    if (!colaboradorId || !papelId || !turno || !tipoColeta) {
+    if (!colaboradorId || !processoId || !papelId || !turno || !tipoColeta) {
       setErro("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -117,6 +121,7 @@ export function SessaoForm({
       .insert({
         colaborador_id: colaboradorId,
         observador_id: precisaObservador ? observadorId : null,
+        processo_id: processoId,
         papel_id: papelId,
         turno,
         tipo_coleta: tipoColeta,
@@ -133,6 +138,7 @@ export function SessaoForm({
     }
 
     const colaborador = colaboradores.find((c) => c.id === colaboradorId)!;
+    const processo = processos.find((p) => p.id === processoId)!;
     const papel = papeis.find((p) => p.id === papelId)!;
     const observador = colaboradores.find((c) => c.id === observadorId) ?? null;
 
@@ -140,6 +146,8 @@ export function SessaoForm({
       id: data.id,
       colaboradorId,
       colaboradorNome: colaborador.nome,
+      processoId,
+      processoNome: processo.nome,
       papelId,
       papelNome: papel.nome,
       turno,
@@ -168,6 +176,24 @@ export function SessaoForm({
         selecionadoId={colaboradorId}
         onSelecionar={(item) => setColaboradorId(item.id)}
       />
+
+      <div>
+        <label className="block text-sm font-medium text-neutral-600 mb-2">Macroprocesso</label>
+        <div className="flex flex-col gap-2">
+          {processos.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setProcessoId(p.id)}
+              className={`rounded-lg px-4 py-3 text-left text-base font-medium ${
+                processoId === p.id ? "bg-[#5F0040] text-white" : "bg-neutral-200 text-neutral-700"
+              }`}
+            >
+              {p.nome}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div>
         <label className="block text-sm font-medium text-neutral-600 mb-1">Papel no momento</label>

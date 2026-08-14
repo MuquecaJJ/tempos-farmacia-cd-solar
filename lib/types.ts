@@ -59,6 +59,8 @@ export type SessaoAtiva = {
   id: string;
   colaboradorId: number;
   colaboradorNome: string;
+  processoId: number;
+  processoNome: string;
   papelId: number;
   papelNome: string;
   turno: Turno;
