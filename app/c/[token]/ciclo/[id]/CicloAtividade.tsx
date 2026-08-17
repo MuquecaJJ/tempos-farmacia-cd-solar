@@ -7,7 +7,7 @@ import { lerSessaoAtiva } from "@/lib/sessao-storage";
 import { adquirirWakeLock, formatarTempo, liberarWakeLock, vibrar } from "@/lib/cronometro";
 import type { Atividade, SessaoAtiva } from "@/lib/types";
 
-type Fase = "IDLE" | "RODANDO" | "CONFIRMACAO";
+type Fase = "IDLE" | "RODANDO" | "INTERROMPIDO" | "CONFIRMACAO";
 
 type Ciclo = {
   numero: number;
@@ -16,12 +16,24 @@ type Ciclo = {
   duracao_ms: number;
 };
 
+type InterrupcaoRegistrada = {
+  atividade_id: number;
+  iniciada_em: string;
+  encerrada_em: string;
+  duracao_ms: number;
+  motivo_interrupcao: string | null;
+  quantidade: number | null;
+  unidade: string | null;
+};
+
 export function CicloAtividade({
   token,
   atividade,
+  interrupcaoGenerica,
 }: {
   token: string;
   atividade: Atividade;
+  interrupcaoGenerica: Atividade | null;
 }) {
   const router = useRouter();
 
@@ -33,11 +45,20 @@ export function CicloAtividade({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [faseAntesDaPausa, setFaseAntesDaPausa] = useState<Fase | null>(null);
+  const [motivoInterrupcao, setMotivoInterrupcao] = useState("");
+  const [quantidadeInterrupcao, setQuantidadeInterrupcao] = useState("");
+  const [interrupcoes, setInterrupcoes] = useState<InterrupcaoRegistrada[]>([]);
+  const [tempoPausadoMs, setTempoPausadoMs] = useState(0);
+  const [qtdInterrupcoes, setQtdInterrupcoes] = useState(0);
+
   const corridaInicioPerfRef = useRef<number | null>(null);
   const corridaIniciadaEmRef = useRef<string | null>(null);
   const cicloInicioPerfRef = useRef<number | null>(null);
   const cicloIniciadaEmRef = useRef<string | null>(null);
   const proximoNumeroRef = useRef(1);
+  const pausaInicioPerfRef = useRef<number | null>(null);
+  const pausaIniciadaEmRef = useRef<string | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   useEffect(() => {
@@ -50,7 +71,7 @@ export function CicloAtividade({
   }, [token, router]);
 
   useEffect(() => {
-    if (fase !== "RODANDO") return;
+    if (fase !== "RODANDO" && fase !== "INTERROMPIDO") return;
     const id = setInterval(() => setTick((t) => t + 1), 100);
     return () => clearInterval(id);
   }, [fase]);
@@ -94,6 +115,10 @@ export function CicloAtividade({
     corridaInicioPerfRef.current !== null
       ? performance.now() - corridaInicioPerfRef.current
       : 0;
+  const pausaElapsedMs =
+    fase === "INTERROMPIDO" && pausaInicioPerfRef.current !== null
+      ? performance.now() - pausaInicioPerfRef.current
+      : 0;
   const mediaMs =
     ciclos.length > 0
       ? ciclos.reduce((soma, c) => soma + c.duracao_ms, 0) / ciclos.length
@@ -110,6 +135,9 @@ export function CicloAtividade({
     cicloIniciadaEmRef.current = agoraIso;
     proximoNumeroRef.current = 1;
     setCiclos([]);
+    setInterrupcoes([]);
+    setTempoPausadoMs(0);
+    setQtdInterrupcoes(0);
     setFase("RODANDO");
   }
 
@@ -143,6 +171,64 @@ export function CicloAtividade({
     router.push(`/c/${token}/atividades`);
   }
 
+  // Interrupção genérica (§4.2): pausa os cronômetros da corrida e do ciclo
+  // em andamento; ao retomar, desloca-os pela duração da pausa e grava uma
+  // medição com eh_interrupcao = true, fora da contagem de ciclos.
+  function iniciarInterrupcao() {
+    if (!interrupcaoGenerica) return;
+    vibrar();
+    const agoraPerf = performance.now();
+    const agoraIso = new Date().toISOString();
+    pausaInicioPerfRef.current = agoraPerf;
+    pausaIniciadaEmRef.current = agoraIso;
+    setFaseAntesDaPausa(fase);
+    setMotivoInterrupcao("");
+    setQuantidadeInterrupcao("");
+    setErro(null);
+    setFase("INTERROMPIDO");
+  }
+
+  function retomarInterrupcao() {
+    if (!interrupcaoGenerica) return;
+
+    if (interrupcaoGenerica.exige_motivo && !motivoInterrupcao.trim()) {
+      setErro("Informe o motivo da interrupção.");
+      return;
+    }
+    if (interrupcaoGenerica.requer_quantidade && !quantidadeInterrupcao) {
+      setErro("Informe a quantidade.");
+      return;
+    }
+
+    vibrar();
+    setErro(null);
+    const agoraPerf = performance.now();
+    const agoraIso = new Date().toISOString();
+    const duracaoPausaMs = Math.round(agoraPerf - (pausaInicioPerfRef.current ?? agoraPerf));
+
+    if (corridaInicioPerfRef.current !== null) corridaInicioPerfRef.current += duracaoPausaMs;
+    if (cicloInicioPerfRef.current !== null) cicloInicioPerfRef.current += duracaoPausaMs;
+
+    const qtd = quantidadeInterrupcao ? Number(quantidadeInterrupcao) : null;
+    setInterrupcoes((prev) => [
+      ...prev,
+      {
+        atividade_id: interrupcaoGenerica.id,
+        iniciada_em: pausaIniciadaEmRef.current!,
+        encerrada_em: agoraIso,
+        duracao_ms: duracaoPausaMs,
+        motivo_interrupcao: interrupcaoGenerica.exige_motivo ? motivoInterrupcao.trim() : null,
+        quantidade: interrupcaoGenerica.requer_quantidade ? qtd : null,
+        unidade: interrupcaoGenerica.requer_quantidade ? interrupcaoGenerica.unidade : null,
+      },
+    ]);
+    setTempoPausadoMs((prev) => prev + duracaoPausaMs);
+    setQtdInterrupcoes((prev) => prev + 1);
+
+    setFase(faseAntesDaPausa ?? "RODANDO");
+    setFaseAntesDaPausa(null);
+  }
+
   async function finalizar(status: "VALIDA" | "DESCARTADA") {
     setErro(null);
     vibrar();
@@ -161,6 +247,8 @@ export function CicloAtividade({
       encerrada_em: new Date().toISOString(),
       observacao: observacao.trim() || null,
       status,
+      tempo_pausado_ms: tempoPausadoMs,
+      qtd_interrupcoes: qtdInterrupcoes,
     });
 
     if (corridaError) {
@@ -173,20 +261,37 @@ export function CicloAtividade({
       return;
     }
 
-    if (ciclos.length > 0) {
-      const linhas = ciclos.map((c, index) => ({
-        sessao_id: sessao!.id,
-        corrida_id: corridaId,
-        atividade_id: atividade.id,
-        ordem: index + 1,
-        iniciada_em: c.iniciada_em,
-        encerrada_em: c.encerrada_em,
-        duracao_ms: c.duracao_ms,
-        quantidade: null,
-        unidade: null,
-        observacao: null,
-        status,
-      }));
+    const linhasCiclos = ciclos.map((c, index) => ({
+      sessao_id: sessao!.id,
+      corrida_id: corridaId,
+      atividade_id: atividade.id,
+      ordem: index + 1,
+      iniciada_em: c.iniciada_em,
+      encerrada_em: c.encerrada_em,
+      duracao_ms: c.duracao_ms,
+      quantidade: null,
+      unidade: null,
+      observacao: null,
+      status,
+    }));
+    const linhasInterrupcoes = interrupcoes.map((i) => ({
+      sessao_id: sessao!.id,
+      corrida_id: corridaId,
+      atividade_id: i.atividade_id,
+      ordem: null,
+      iniciada_em: i.iniciada_em,
+      encerrada_em: i.encerrada_em,
+      duracao_ms: i.duracao_ms,
+      quantidade: i.quantidade,
+      unidade: i.unidade,
+      observacao: null,
+      status,
+      eh_interrupcao: true,
+      motivo_interrupcao: i.motivo_interrupcao,
+    }));
+    const linhas = [...linhasCiclos, ...linhasInterrupcoes];
+
+    if (linhas.length > 0) {
       const { error: medicoesError } = await supabaseBrowser.from("medicoes").insert(linhas);
       if (medicoesError) {
         setSalvando(false);
@@ -203,7 +308,7 @@ export function CicloAtividade({
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-6">
         <div>
-          <p className="text-sm text-neutral-500">Atividade nº {atividade.numero}</p>
+          <p className="text-sm text-neutral-500">{atividade.codigo}</p>
           <h1 className="text-xl font-semibold text-[#5F0040]">{atividade.nome}</h1>
         </div>
         <button
@@ -278,6 +383,66 @@ export function CicloAtividade({
             ))}
           </div>
         )}
+
+        {interrupcaoGenerica && (
+          <button onClick={iniciarInterrupcao} className="text-sm text-amber-700 underline">
+            ⏸ INTERROMPER
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (fase === "INTERROMPIDO") {
+    return (
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col gap-5 bg-amber-50 p-6">
+        <div className="rounded-lg border-2 border-amber-500 bg-amber-100 p-4 text-center">
+          <p className="text-lg font-bold text-amber-800">⏸ CICLO PAUSADO</p>
+          <p className="text-sm text-amber-700">{interrupcaoGenerica?.nome}</p>
+        </div>
+        <p className="text-center font-mono text-5xl font-bold tabular-nums text-amber-600">
+          {formatarTempo(pausaElapsedMs)}
+        </p>
+
+        {interrupcaoGenerica?.requer_quantidade && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-600">
+              Quantidade {interrupcaoGenerica.unidade ? `(${interrupcaoGenerica.unidade})` : ""}
+            </label>
+            <input
+              type="number"
+              inputMode="numeric"
+              step={1}
+              min={0}
+              value={quantidadeInterrupcao}
+              onChange={(e) => setQuantidadeInterrupcao(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base"
+            />
+          </div>
+        )}
+
+        {interrupcaoGenerica?.exige_motivo && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-600">Motivo</label>
+            <textarea
+              value={motivoInterrupcao}
+              onChange={(e) => setMotivoInterrupcao(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base"
+            />
+          </div>
+        )}
+
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+        <div className="flex flex-1 items-end">
+          <button
+            onClick={retomarInterrupcao}
+            className="min-h-[30vh] w-full rounded-lg bg-amber-500 text-2xl font-bold text-white"
+          >
+            RETOMAR
+          </button>
+        </div>
       </div>
     );
   }

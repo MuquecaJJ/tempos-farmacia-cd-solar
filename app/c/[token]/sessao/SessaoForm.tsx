@@ -11,7 +11,7 @@ import {
   salvarSessaoAtiva,
   encerrarSessaoAtiva,
 } from "@/lib/sessao-storage";
-import type { Colaborador, Papel, Processo, SessaoAtiva, TipoColeta, Turno } from "@/lib/types";
+import type { Colaborador, Processo, SessaoAtiva, TipoColeta, Turno } from "@/lib/types";
 
 const DISPOSITIVOS = ["CEL-01", "CEL-02", "CEL-03", "CEL-04"];
 
@@ -29,12 +29,10 @@ const TIPOS_COLETA: { valor: TipoColeta; label: string }[] = [
 export function SessaoForm({
   token,
   colaboradores,
-  papeis,
   processos,
 }: {
   token: string;
   colaboradores: Colaborador[];
-  papeis: Papel[];
   processos: Processo[];
 }) {
   const router = useRouter();
@@ -42,9 +40,11 @@ export function SessaoForm({
   const [dispositivo, setDispositivo] = useState<string | null | undefined>(undefined);
   const [sessaoAtiva, setSessaoAtiva] = useState<SessaoAtiva | null | undefined>(undefined);
 
+  const executantes = colaboradores.filter((c) => !c.eh_observador);
+  const observadoresDisponiveis = colaboradores.filter((c) => c.eh_observador);
+
   const [colaboradorId, setColaboradorId] = useState<number | null>(null);
   const [processoId, setProcessoId] = useState<number | null>(null);
-  const [papelId, setPapelId] = useState<number | null>(null);
   const [turno, setTurno] = useState<Turno | null>(null);
   const [tipoColeta, setTipoColeta] = useState<TipoColeta | null>(null);
   const [observadorId, setObservadorId] = useState<number | null>(null);
@@ -78,7 +78,6 @@ export function SessaoForm({
         <div className="rounded-lg border border-neutral-300 bg-white p-4 text-sm">
           <p><strong>Colaborador:</strong> {sessaoAtiva.colaboradorNome}</p>
           <p><strong>Macroprocesso:</strong> {sessaoAtiva.processoNome}</p>
-          <p><strong>Papel:</strong> {sessaoAtiva.papelNome}</p>
           <p><strong>Turno:</strong> {sessaoAtiva.turno}</p>
           <p><strong>Tipo:</strong> {sessaoAtiva.tipoColeta}</p>
         </div>
@@ -106,7 +105,7 @@ export function SessaoForm({
   async function abrirSessao() {
     setErro(null);
 
-    if (!colaboradorId || !processoId || !papelId || !turno || !tipoColeta) {
+    if (!colaboradorId || !processoId || !turno || !tipoColeta) {
       setErro("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -122,7 +121,6 @@ export function SessaoForm({
       colaborador_id: colaboradorId,
       observador_id: precisaObservador ? observadorId : null,
       processo_id: processoId,
-      papel_id: papelId,
       turno,
       tipo_coleta: tipoColeta,
       dispositivo,
@@ -137,7 +135,6 @@ export function SessaoForm({
 
     const colaborador = colaboradores.find((c) => c.id === colaboradorId)!;
     const processo = processos.find((p) => p.id === processoId)!;
-    const papel = papeis.find((p) => p.id === papelId)!;
     const observador = colaboradores.find((c) => c.id === observadorId) ?? null;
 
     salvarSessaoAtiva({
@@ -146,8 +143,6 @@ export function SessaoForm({
       colaboradorNome: colaborador.nome,
       processoId,
       processoNome: processo.nome,
-      papelId,
-      papelNome: papel.nome,
       turno,
       tipoColeta,
       observadorId: precisaObservador ? observadorId : null,
@@ -170,7 +165,7 @@ export function SessaoForm({
 
       <BuscaLista
         label="Colaborador (quem executa)"
-        items={colaboradores}
+        items={executantes}
         selecionadoId={colaboradorId}
         onSelecionar={(item) => setColaboradorId(item.id)}
       />
@@ -191,22 +186,6 @@ export function SessaoForm({
             </button>
           ))}
         </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-neutral-600 mb-1">Papel no momento</label>
-        <select
-          value={papelId ?? ""}
-          onChange={(e) => setPapelId(e.target.value ? Number(e.target.value) : null)}
-          className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-base"
-        >
-          <option value="">Selecione...</option>
-          {papeis.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div>
@@ -248,7 +227,7 @@ export function SessaoForm({
       {precisaObservador && (
         <BuscaLista
           label="Observador"
-          items={colaboradores.filter((c) => c.id !== colaboradorId)}
+          items={observadoresDisponiveis}
           selecionadoId={observadorId}
           onSelecionar={(item) => setObservadorId(item.id)}
         />

@@ -12,16 +12,29 @@ export default async function CicloPage({
   const atividadeId = Number(id);
   if (!Number.isInteger(atividadeId)) notFound();
 
-  const { data: atividade, error } = (await supabaseBrowser
-    .from("atividades")
-    .select(
-      "id, numero, processo_id, papel_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo"
-    )
-    .eq("id", atividadeId)
-    .eq("ativo", true)
-    .single()) as unknown as { data: Atividade | null; error: unknown };
+  const [{ data: atividade, error }, { data: interrupcoes }] = await Promise.all([
+    supabaseBrowser
+      .from("atividades")
+      .select(
+        "id, codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo, interrompe_fluxo_id, interrupcao_global, exige_motivo"
+      )
+      .eq("id", atividadeId)
+      .eq("ativo", true)
+      .single() as unknown as Promise<{ data: Atividade | null; error: unknown }>,
+    supabaseBrowser
+      .from("atividades")
+      .select(
+        "id, codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo, interrompe_fluxo_id, interrupcao_global, exige_motivo"
+      )
+      .eq("modo", "INTERRUPCAO")
+      .eq("interrupcao_global", true)
+      .eq("ativo", true)
+      .maybeSingle() as unknown as Promise<{ data: Atividade | null }>,
+  ]);
 
   if (error || !atividade || atividade.modo !== "CICLO") notFound();
 
-  return <CicloAtividade token={token} atividade={atividade} />;
+  return (
+    <CicloAtividade token={token} atividade={atividade} interrupcaoGenerica={interrupcoes ?? null} />
+  );
 }

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { PAINEL_COOKIE, pinValido } from "@/lib/painel-auth";
-import type { Atividade, Colaborador, Fluxo, Papel, Processo, StatusRegistro } from "@/lib/types";
+import type { Atividade, Colaborador, Fluxo, Processo, StatusRegistro } from "@/lib/types";
 
 type MedicaoExport = {
   id: string;
@@ -9,6 +9,9 @@ type MedicaoExport = {
   corrida_id: string | null;
   atividade_id: number;
   ordem: number | null;
+  ordem_etapa: number | null;
+  eh_interrupcao: boolean;
+  motivo_interrupcao: string | null;
   iniciada_em: string;
   encerrada_em: string;
   duracao_ms: number;
@@ -19,7 +22,6 @@ type MedicaoExport = {
   sessoes: {
     colaborador_id: number;
     observador_id: number | null;
-    papel_id: number;
     turno: string;
     tipo_coleta: string;
     dispositivo: string | null;
@@ -35,18 +37,18 @@ const CABECALHO = [
   "hora",
   "turno",
   "colaborador",
-  "papel",
   "tipo_coleta",
   "observador",
   "dispositivo",
   "processo_codigo",
   "processo_nome",
   "fluxo",
-  "atividade_numero",
+  "codigo_atividade",
   "atividade_nome",
   "tipo_atividade",
   "natureza",
   "modo",
+  "ordem_etapa",
   "ordem",
   "duracao_ms",
   "duracao_seg",
@@ -55,6 +57,10 @@ const CABECALHO = [
   "tempo_por_unidade_seg",
   "status",
   "observacao",
+  "eh_interrupcao",
+  "motivo_interrupcao",
+  "tempo_pausado_ms",
+  "qtd_interrupcoes",
 ];
 
 function escaparCampo(valor: string | number | null | undefined): string {
@@ -76,7 +82,6 @@ export async function GET() {
     { data: medicoes },
     { data: atividades },
     { data: processos },
-    { data: papeis },
     { data: colaboradores },
     { data: corridas },
     { data: fluxos },
@@ -84,19 +89,18 @@ export async function GET() {
     supabaseAdmin
       .from("medicoes")
       .select(
-        "id, sessao_id, corrida_id, atividade_id, ordem, iniciada_em, encerrada_em, duracao_ms, quantidade, unidade, observacao, status, sessoes(colaborador_id, observador_id, papel_id, turno, tipo_coleta, dispositivo, processo_id)"
+        "id, sessao_id, corrida_id, atividade_id, ordem, ordem_etapa, eh_interrupcao, motivo_interrupcao, iniciada_em, encerrada_em, duracao_ms, quantidade, unidade, observacao, status, sessoes(colaborador_id, observador_id, turno, tipo_coleta, dispositivo, processo_id)"
       )
       .order("criado_em") as unknown as Promise<{ data: MedicaoExport[] | null }>,
     supabaseAdmin
       .from("atividades")
-      .select("id, numero, processo_id, papel_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo") as unknown as Promise<{
+      .select("id, codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo") as unknown as Promise<{
       data: Atividade[] | null;
     }>,
     supabaseAdmin.from("processos").select("id, codigo, nome, ordem") as unknown as Promise<{ data: Processo[] | null }>,
-    supabaseAdmin.from("papeis").select("id, nome, ordem") as unknown as Promise<{ data: Papel[] | null }>,
     supabaseAdmin.from("colaboradores").select("id, nome, ativo") as unknown as Promise<{ data: Colaborador[] | null }>,
-    supabaseAdmin.from("corridas").select("id, fluxo_id") as unknown as Promise<{
-      data: { id: string; fluxo_id: number | null }[] | null;
+    supabaseAdmin.from("corridas").select("id, fluxo_id, tempo_pausado_ms, qtd_interrupcoes") as unknown as Promise<{
+      data: { id: string; fluxo_id: number | null; tempo_pausado_ms: number; qtd_interrupcoes: number }[] | null;
     }>,
     supabaseAdmin.from("fluxos").select("id, processo_id, nome, unidade_corrida, ordem") as unknown as Promise<{
       data: Fluxo[] | null;
@@ -105,16 +109,15 @@ export async function GET() {
 
   const atividadePorId = new Map((atividades ?? []).map((a) => [a.id, a]));
   const processoPorId = new Map((processos ?? []).map((p) => [p.id, p]));
-  const papelPorId = new Map((papeis ?? []).map((p) => [p.id, p.nome]));
   const colaboradorPorId = new Map((colaboradores ?? []).map((c) => [c.id, c.nome]));
-  const fluxoIdPorCorrida = new Map((corridas ?? []).map((c) => [c.id, c.fluxo_id]));
+  const corridaPorId = new Map((corridas ?? []).map((c) => [c.id, c]));
   const fluxoNomePorId = new Map((fluxos ?? []).map((f) => [f.id, f.nome]));
 
   const linhas = (medicoes ?? []).map((m) => {
     const atividade = atividadePorId.get(m.atividade_id);
     const processo = atividade ? processoPorId.get(atividade.processo_id) : undefined;
-    const fluxoId = m.corrida_id ? fluxoIdPorCorrida.get(m.corrida_id) : null;
-    const fluxoNome = fluxoId ? fluxoNomePorId.get(fluxoId) : null;
+    const corrida = m.corrida_id ? corridaPorId.get(m.corrida_id) : undefined;
+    const fluxoNome = corrida?.fluxo_id ? fluxoNomePorId.get(corrida.fluxo_id) : null;
     const dataHora = new Date(m.encerrada_em);
     const duracaoSeg = m.duracao_ms / 1000;
     const tempoPorUnidade = m.quantidade && m.quantidade > 0 ? duracaoSeg / m.quantidade : null;
@@ -127,18 +130,18 @@ export async function GET() {
       dataHora.toLocaleTimeString("pt-BR"),
       m.sessoes?.turno ?? "",
       m.sessoes ? colaboradorPorId.get(m.sessoes.colaborador_id) ?? "" : "",
-      m.sessoes ? papelPorId.get(m.sessoes.papel_id) ?? "" : "",
       m.sessoes?.tipo_coleta ?? "",
       m.sessoes?.observador_id ? colaboradorPorId.get(m.sessoes.observador_id) ?? "" : "",
       m.sessoes?.dispositivo ?? "",
       processo?.codigo ?? "",
       processo?.nome ?? "",
       fluxoNome ?? "",
-      atividade?.numero ?? "",
+      atividade?.codigo ?? "",
       atividade?.nome ?? "",
       atividade?.tipo_atividade ?? "",
       atividade?.natureza ?? "",
       atividade?.modo ?? "",
+      m.ordem_etapa ?? "",
       m.ordem ?? "",
       m.duracao_ms,
       duracaoSeg.toFixed(3),
@@ -147,6 +150,10 @@ export async function GET() {
       tempoPorUnidade !== null ? tempoPorUnidade.toFixed(3) : "",
       m.status,
       m.observacao ?? "",
+      m.eh_interrupcao ? "sim" : "não",
+      m.motivo_interrupcao ?? "",
+      corrida?.tempo_pausado_ms ?? "",
+      corrida?.qtd_interrupcoes ?? "",
     ];
 
     return campos.map(escaparCampo).join(";");

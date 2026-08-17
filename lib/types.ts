@@ -1,19 +1,14 @@
 export type Turno = "MANHA" | "TARDE" | "NOITE";
 export type TipoColeta = "AUTO" | "OBSERVADO";
-export type ModoColeta = "FLUXO" | "CICLO" | "AVULSA";
+export type ModoColeta = "FLUXO" | "CICLO" | "AVULSA" | "CICLO_EM_FLUXO" | "INTERRUPCAO";
 export type Natureza = "Rotina" | "Eventual";
 export type StatusRegistro = "VALIDA" | "DESCARTADA" | "SUSPEITA";
-
-export type Papel = {
-  id: number;
-  nome: string;
-  ordem: number;
-};
 
 export type Colaborador = {
   id: number;
   nome: string;
   ativo: boolean;
+  eh_observador: boolean;
 };
 
 export type Processo = {
@@ -33,9 +28,8 @@ export type Fluxo = {
 
 export type Atividade = {
   id: number;
-  numero: number;
+  codigo: string;
   processo_id: number;
-  papel_id: number;
   nome: string;
   tipo_atividade: string;
   natureza: Natureza;
@@ -44,6 +38,9 @@ export type Atividade = {
   requer_quantidade: boolean;
   meta_amostras: number;
   ativo: boolean;
+  interrompe_fluxo_id: number | null;
+  interrupcao_global: boolean;
+  exige_motivo: boolean;
 };
 
 export type FluxoEtapa = {
@@ -53,6 +50,8 @@ export type FluxoEtapa = {
   ordem: number;
   variante: boolean;
   opcional: boolean;
+  condicao: string | null;
+  modo_etapa: ModoColeta;
 };
 
 // Estado da sessão persistido em sessionStorage — sobrevive a refresh acidental (R11).
@@ -62,8 +61,6 @@ export type SessaoAtiva = {
   colaboradorNome: string;
   processoId: number;
   processoNome: string;
-  papelId: number;
-  papelNome: string;
   turno: Turno;
   tipoColeta: TipoColeta;
   observadorId: number | null;

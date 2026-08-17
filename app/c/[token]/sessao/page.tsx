@@ -1,5 +1,5 @@
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import type { Colaborador, Papel, Processo } from "@/lib/types";
+import type { Colaborador, Processo } from "@/lib/types";
 import { SessaoForm } from "./SessaoForm";
 
 export default async function SessaoPage({
@@ -9,19 +9,16 @@ export default async function SessaoPage({
 }) {
   const { token } = await params;
 
-  const [{ data: colaboradores }, { data: papeis }, { data: processos }] = await Promise.all([
+  const [{ data: colaboradores }, { data: processos }] = await Promise.all([
     supabaseBrowser
       .from("colaboradores")
-      .select("id, nome, ativo")
+      .select("id, nome, ativo, eh_observador")
       .eq("ativo", true)
       .order("nome") as unknown as Promise<{ data: Colaborador[] | null }>,
     supabaseBrowser
-      .from("papeis")
-      .select("id, nome, ordem")
-      .order("ordem") as unknown as Promise<{ data: Papel[] | null }>,
-    supabaseBrowser
       .from("processos")
       .select("id, codigo, nome, ordem")
+      .neq("codigo", "SIST-000")
       .order("ordem") as unknown as Promise<{ data: Processo[] | null }>,
   ]);
 
@@ -29,7 +26,6 @@ export default async function SessaoPage({
     <SessaoForm
       token={token}
       colaboradores={colaboradores ?? []}
-      papeis={papeis ?? []}
       processos={processos ?? []}
     />
   );

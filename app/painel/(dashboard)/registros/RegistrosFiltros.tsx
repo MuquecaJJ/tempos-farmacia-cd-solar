@@ -35,7 +35,7 @@ export function RegistrosFiltros({ atividades }: { atividades: Atividade[] }) {
         <option value="todos">Todas as atividades</option>
         {atividades.map((a) => (
           <option key={a.id} value={a.id}>
-            {a.numero} — {a.nome}
+            {a.codigo} — {a.nome}
           </option>
         ))}
       </select>

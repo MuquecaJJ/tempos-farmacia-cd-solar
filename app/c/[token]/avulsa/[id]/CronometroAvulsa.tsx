@@ -154,7 +154,7 @@ export function CronometroAvulsa({
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-6">
         <div>
-          <p className="text-sm text-neutral-500">Atividade nº {atividade.numero}</p>
+          <p className="text-sm text-neutral-500">{atividade.codigo}</p>
           <h1 className="text-xl font-semibold text-[#5F0040]">{atividade.nome}</h1>
         </div>
         <button

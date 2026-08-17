@@ -277,12 +277,12 @@ Colunas: `numero | processo | papel | nome | tipo_atividade | natureza | modo | 
 | 12 | Tratar CNPJ incorreto (informar compras / solicitar carta de correção) | Correção de Exceção | Eventual | AVULSA | — |
 | 13 | Tratar não conformidade (informar compras e aguardar devolutiva) | Correção de Exceção | Eventual | AVULSA | — |
 
-**SEDIS-002 — Fracionamento e Etiquetagem** (papel: Auxiliar de Farmácia / Produção)
+**SEDIS-002 — Fracionamento e Etiquetagem** (papel: Auxiliar de Farmácia / Produção) - Revisado
 
 | Nº | Atividade | Tipo | Natureza | Modo | Unidade |
 |---|---|---|---|---|---|
 | 14 | Configurar a quantidade de rótulos e a fração da embalagem primária | Registro/Documentação | Rotina | AVULSA | — |
-| 15 | Etiquetar cada embalagem primária | Manuseio Físico | Rotina | **CICLO** | embalagem |
+| 15 | Etiquetar cada embalagem primária | Manuseio Físico | Rotina | **CICLO** | embalagem | 
 
 **SEDIS-003 — Armazenamento** (papel: Auxiliar de Farmácia / Produção)
 

@@ -17,7 +17,7 @@ type MedicaoRegistro = {
   observacao: string | null;
   status: StatusRegistro;
   criado_em: string;
-  atividades: { numero: number; nome: string } | null;
+  atividades: { codigo: string; nome: string } | null;
   sessoes: { colaborador_id: number; turno: string; tipo_coleta: string } | null;
 };
 
@@ -40,7 +40,7 @@ export default async function RegistrosPage({
   let query = supabaseAdmin
     .from("medicoes")
     .select(
-      "id, atividade_id, iniciada_em, encerrada_em, duracao_ms, quantidade, unidade, observacao, status, criado_em, atividades(numero, nome), sessoes(colaborador_id, turno, tipo_coleta)",
+      "id, atividade_id, iniciada_em, encerrada_em, duracao_ms, quantidade, unidade, observacao, status, criado_em, atividades(codigo, nome), sessoes(colaborador_id, turno, tipo_coleta)",
       { count: "exact" }
     )
     .order("criado_em", { ascending: false })
@@ -53,9 +53,11 @@ export default async function RegistrosPage({
     query as unknown as Promise<{ data: MedicaoRegistro[] | null; count: number | null }>,
     supabaseAdmin
       .from("atividades")
-      .select("id, numero, processo_id, papel_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo")
-      .order("numero") as unknown as Promise<{ data: Atividade[] | null }>,
-    supabaseAdmin.from("colaboradores").select("id, nome, ativo") as unknown as Promise<{
+      .select(
+        "id, codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo, interrompe_fluxo_id, interrupcao_global, exige_motivo"
+      )
+      .order("codigo") as unknown as Promise<{ data: Atividade[] | null }>,
+    supabaseAdmin.from("colaboradores").select("id, nome, ativo, eh_observador") as unknown as Promise<{
       data: Colaborador[] | null;
     }>,
   ]);
@@ -91,7 +93,7 @@ export default async function RegistrosPage({
                   {new Date(m.criado_em).toLocaleString("pt-BR")}
                 </td>
                 <td className="px-3 py-2">
-                  {m.atividades ? `${m.atividades.numero} — ${m.atividades.nome}` : m.atividade_id}
+                  {m.atividades ? `${m.atividades.codigo} — ${m.atividades.nome}` : m.atividade_id}
                 </td>
                 <td className="px-3 py-2">
                   {m.sessoes ? colaboradorNome.get(m.sessoes.colaborador_id) ?? "—" : "—"}

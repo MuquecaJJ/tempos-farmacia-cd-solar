@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Atividade, Natureza, Papel, Processo, TipoColeta } from "@/lib/types";
+import type { Atividade, Natureza, Processo, TipoColeta } from "@/lib/types";
 import type { MedicaoCobertura } from "./page";
 
 function corSemaforo(pct: number): string {
@@ -13,23 +13,19 @@ function corSemaforo(pct: number): string {
 export function CoberturaTable({
   atividades,
   processos,
-  papeis,
   medicoes,
 }: {
   atividades: Atividade[];
   processos: Processo[];
-  papeis: Papel[];
   medicoes: MedicaoCobertura[];
 }) {
   const [processoId, setProcessoId] = useState<number | "todos">("todos");
-  const [papelId, setPapelId] = useState<number | "todos">("todos");
   const [natureza, setNatureza] = useState<Natureza | "todos">("todos");
   const [tipoColeta, setTipoColeta] = useState<TipoColeta | "todos">("todos");
 
   const linhas = useMemo(() => {
     return atividades
       .filter((a) => processoId === "todos" || a.processo_id === processoId)
-      .filter((a) => papelId === "todos" || a.papel_id === papelId)
       .filter((a) => natureza === "todos" || a.natureza === natureza)
       .map((a) => {
         const doAtividade = medicoes.filter(
@@ -45,7 +41,7 @@ export function CoberturaTable({
         }, null);
         return { atividade: a, n, pct, ultima };
       });
-  }, [atividades, medicoes, processoId, papelId, natureza, tipoColeta]);
+  }, [atividades, medicoes, processoId, natureza, tipoColeta]);
 
   const porProcesso = useMemo(() => {
     const grupos = new Map<number, typeof linhas>();
@@ -69,18 +65,6 @@ export function CoberturaTable({
         >
           <option value="todos">Todos os processos</option>
           {processos.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
-        <select
-          value={papelId}
-          onChange={(e) => setPapelId(e.target.value === "todos" ? "todos" : Number(e.target.value))}
-          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-        >
-          <option value="todos">Todos os papéis</option>
-          {papeis.map((p) => (
             <option key={p.id} value={p.id}>
               {p.nome}
             </option>
@@ -116,7 +100,7 @@ export function CoberturaTable({
                 </th>
               </tr>
               <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                <th className="px-4 py-2">Nº / Atividade</th>
+                <th className="px-4 py-2">Código / Atividade</th>
                 <th className="px-4 py-2">Natureza</th>
                 <th className="px-4 py-2">n</th>
                 <th className="px-4 py-2">Meta</th>
@@ -128,7 +112,7 @@ export function CoberturaTable({
               {linhas.map(({ atividade, n, pct, ultima }) => (
                 <tr key={atividade.id} className="border-b border-neutral-100 last:border-0">
                   <td className="px-4 py-2">
-                    <span className="text-neutral-400">{atividade.numero}</span> {atividade.nome}
+                    <span className="text-neutral-400">{atividade.codigo}</span> {atividade.nome}
                   </td>
                   <td className="px-4 py-2 text-neutral-600">{atividade.natureza}</td>
                   <td className="px-4 py-2 font-mono">{n}</td>

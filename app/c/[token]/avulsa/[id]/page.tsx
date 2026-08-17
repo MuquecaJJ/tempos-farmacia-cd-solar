@@ -15,7 +15,7 @@ export default async function AvulsaPage({
   const { data: atividade, error } = (await supabaseBrowser
     .from("atividades")
     .select(
-      "id, numero, processo_id, papel_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo"
+      "id, codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras, ativo, interrompe_fluxo_id, interrupcao_global, exige_motivo"
     )
     .eq("id", atividadeId)
     .eq("ativo", true)

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { resumir, media, type Resumo } from "@/lib/estatisticas";
 import type { Atividade, Colaborador, Fluxo, FluxoEtapa, Processo, Turno } from "@/lib/types";
-import type { MedicaoEstatistica } from "./page";
+import type { CorridaEstatistica, MedicaoEstatistica } from "./page";
 
 function formatarMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
@@ -70,6 +70,7 @@ export function EstatisticasAtividades({
   fluxoEtapas,
   colaboradores,
   medicoes,
+  corridas,
 }: {
   atividades: Atividade[];
   processos: Processo[];
@@ -77,6 +78,7 @@ export function EstatisticasAtividades({
   fluxoEtapas: FluxoEtapa[];
   colaboradores: Colaborador[];
   medicoes: MedicaoEstatistica[];
+  corridas: CorridaEstatistica[];
 }) {
   const [processoId, setProcessoId] = useState<number | "todos">("todos");
 
@@ -150,7 +152,7 @@ export function EstatisticasAtividades({
   const porFluxo = useMemo(() => {
     const grupos = new Map<number, { atividade: Atividade; valores: number[] }[]>();
     for (const a of atividades) {
-      if (a.modo !== "FLUXO") continue;
+      if (a.modo !== "FLUXO" && a.modo !== "CICLO_EM_FLUXO") continue;
       const fluxoId = fluxoDaAtividade.get(a.id);
       if (fluxoId === undefined) continue;
       const valores = (medicoesPorAtividade.get(a.id) ?? []).map((m) => m.duracao_ms);
@@ -162,6 +164,94 @@ export function EstatisticasAtividades({
       .filter((f) => grupos.has(f.id))
       .map((f) => ({ fluxo: f, etapas: grupos.get(f.id)! }));
   }, [atividades, fluxoDaAtividade, medicoesPorAtividade, fluxos]);
+
+  // Tempo líquido × bruto por corrida, e taxa de interrupção, por fluxo.
+  const temposPorFluxo = useMemo(() => {
+    const porFluxo = new Map<
+      number,
+      { brutos: number[]; liquidos: number[]; comInterrupcao: number; total: number }
+    >();
+    for (const c of corridas) {
+      if (c.fluxo_id === null) continue;
+      const bruto = new Date(c.encerrada_em).getTime() - new Date(c.iniciada_em).getTime();
+      const liquido = bruto - c.tempo_pausado_ms;
+      const atual = porFluxo.get(c.fluxo_id) ?? {
+        brutos: [],
+        liquidos: [],
+        comInterrupcao: 0,
+        total: 0,
+      };
+      atual.brutos.push(bruto);
+      atual.liquidos.push(liquido);
+      atual.total += 1;
+      if (c.qtd_interrupcoes > 0) atual.comInterrupcao += 1;
+      porFluxo.set(c.fluxo_id, atual);
+    }
+    return fluxos
+      .filter((f) => porFluxo.has(f.id))
+      .map((f) => {
+        const d = porFluxo.get(f.id)!;
+        return {
+          fluxo: f,
+          n: d.total,
+          mediaBrutoMs: media(d.brutos),
+          mediaLiquidoMs: media(d.liquidos),
+          taxaInterrupcaoPct: d.total > 0 ? (d.comInterrupcao / d.total) * 100 : 0,
+        };
+      });
+  }, [corridas, fluxos]);
+
+  // % do tempo de separação (F5) perdido com gôndola vazia (interrupção catalogada).
+  const gondolaVaziaPct = useMemo(() => {
+    const f5 = fluxos.find((f) => f.nome === "Separação das Rotas");
+    if (!f5) return null;
+    const doF5 = corridas.filter((c) => c.fluxo_id === f5.id);
+    if (doF5.length === 0) return null;
+    const somaPausadoMs = doF5.reduce((s, c) => s + c.tempo_pausado_ms, 0);
+    const somaBrutoMs = doF5.reduce(
+      (s, c) => s + (new Date(c.encerrada_em).getTime() - new Date(c.iniciada_em).getTime()),
+      0
+    );
+    return somaBrutoMs > 0 ? (somaPausadoMs / somaBrutoMs) * 100 : 0;
+  }, [corridas, fluxos]);
+
+  // Setup (etapas 1 e 3) × ciclo (etapa 2) no F2 — Etiquetagem.
+  const setupVsCicloF2 = useMemo(() => {
+    const f2 = fluxos.find((f) => f.nome === "Etiquetagem");
+    if (!f2) return null;
+    const etapasF2 = fluxoEtapas.filter((e) => e.fluxo_id === f2.id);
+    const idEtapaCiclo = etapasF2.find((e) => e.modo_etapa === "CICLO_EM_FLUXO")?.atividade_id;
+    const idsSetup = etapasF2
+      .filter((e) => e.atividade_id !== idEtapaCiclo)
+      .map((e) => e.atividade_id);
+
+    const medsSetup = medicoes.filter((m) => idsSetup.includes(m.atividade_id) && !m.eh_interrupcao);
+    const medsCiclo = medicoes.filter(
+      (m) => m.atividade_id === idEtapaCiclo && !m.eh_interrupcao
+    );
+
+    return {
+      tempoSetupTotalMs: medsSetup.reduce((s, m) => s + m.duracao_ms, 0),
+      tempoCicloTotalMs: medsCiclo.reduce((s, m) => s + m.duracao_ms, 0),
+      mediaCicloMs: media(medsCiclo.map((m) => m.duracao_ms)),
+      nCiclos: medsCiclo.length,
+    };
+  }, [medicoes, fluxos, fluxoEtapas]);
+
+  // Motivos de interrupção genérica: contagem e tempo total.
+  const motivosInterrupcao = useMemo(() => {
+    const mapa = new Map<string, { n: number; totalMs: number }>();
+    for (const m of medicoes) {
+      if (!m.eh_interrupcao || !m.motivo_interrupcao) continue;
+      const atual = mapa.get(m.motivo_interrupcao) ?? { n: 0, totalMs: 0 };
+      atual.n += 1;
+      atual.totalMs += m.duracao_ms;
+      mapa.set(m.motivo_interrupcao, atual);
+    }
+    return Array.from(mapa.entries())
+      .map(([motivo, d]) => ({ motivo, ...d }))
+      .sort((a, b) => b.n - a.n);
+  }, [medicoes]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -212,7 +302,7 @@ export function EstatisticasAtividades({
             <div key={a.id} className="rounded-lg border border-neutral-200 bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="font-medium text-[#5F0040]">
-                  <span className="text-neutral-400">{a.numero}</span> {a.nome}
+                  <span className="text-neutral-400">{a.codigo}</span> {a.nome}
                 </p>
                 <span className="text-xs text-neutral-500">{a.tipo_atividade}</span>
               </div>
@@ -349,6 +439,88 @@ export function EstatisticasAtividades({
               </table>
             </div>
           ))}
+        </section>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-[#5F0040]">Tempo líquido × bruto e interrupções por fluxo</h2>
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                <th className="px-4 py-2">Fluxo</th>
+                <th className="px-4 py-2">n corridas</th>
+                <th className="px-4 py-2">Média bruta</th>
+                <th className="px-4 py-2">Média líquida</th>
+                <th className="px-4 py-2">Taxa de interrupção</th>
+              </tr>
+            </thead>
+            <tbody>
+              {temposPorFluxo.map(({ fluxo, n, mediaBrutoMs, mediaLiquidoMs, taxaInterrupcaoPct }) => (
+                <tr key={fluxo.id} className="border-b border-neutral-100 last:border-0">
+                  <td className="px-4 py-2">{fluxo.nome}</td>
+                  <td className="px-4 py-2 font-mono">{n}</td>
+                  <td className="px-4 py-2 font-mono">{formatarMs(mediaBrutoMs)}</td>
+                  <td className="px-4 py-2 font-mono">{formatarMs(mediaLiquidoMs)}</td>
+                  <td className="px-4 py-2 font-mono">{taxaInterrupcaoPct.toFixed(0)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {gondolaVaziaPct !== null && (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            <strong>% do tempo de separação perdido com gôndola vazia (F5):</strong>{" "}
+            {gondolaVaziaPct.toFixed(1)}%
+          </p>
+        )}
+      </section>
+
+      {setupVsCicloF2 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold text-[#5F0040]">Setup × ciclo — Etiquetagem (F2)</h2>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border border-neutral-200 bg-white p-3 text-sm">
+              <p className="mb-1 font-medium text-neutral-600">Tempo total de setup</p>
+              <p className="font-mono text-neutral-700">{formatarMs(setupVsCicloF2.tempoSetupTotalMs)}</p>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white p-3 text-sm">
+              <p className="mb-1 font-medium text-neutral-600">Tempo total etiquetando</p>
+              <p className="font-mono text-neutral-700">{formatarMs(setupVsCicloF2.tempoCicloTotalMs)}</p>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white p-3 text-sm">
+              <p className="mb-1 font-medium text-neutral-600">Tempo médio por item etiquetado</p>
+              <p className="font-mono text-neutral-700">
+                {formatarMs(setupVsCicloF2.mediaCicloMs)} (n={setupVsCicloF2.nCiclos})
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {motivosInterrupcao.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold text-[#5F0040]">Motivos de interrupção genérica</h2>
+          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+            <table className="w-full min-w-[480px] text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="px-4 py-2">Motivo</th>
+                  <th className="px-4 py-2">n</th>
+                  <th className="px-4 py-2">Tempo total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {motivosInterrupcao.map(({ motivo, n, totalMs }) => (
+                  <tr key={motivo} className="border-b border-neutral-100 last:border-0">
+                    <td className="px-4 py-2">{motivo}</td>
+                    <td className="px-4 py-2 font-mono">{n}</td>
+                    <td className="px-4 py-2 font-mono">{formatarMs(totalMs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </div>
