@@ -18,11 +18,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           ))}
         </nav>
-        <form action={sair}>
-          <button type="submit" className="text-xs underline opacity-90">
-            sair
-          </button>
-        </form>
+        <div className="flex items-center gap-4 text-xs">
+          <a href="/api/painel/export" className="underline opacity-90">
+            exportar CSV
+          </a>
+          <form action={sair}>
+            <button type="submit" className="underline opacity-90">
+              sair
+            </button>
+          </form>
+        </div>
       </header>
       {children}
     </div>
