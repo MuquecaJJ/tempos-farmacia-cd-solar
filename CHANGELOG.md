@@ -6,6 +6,19 @@ Todas as mudanças relevantes do projeto Cronômetro Operacional (Farmácia / CD
 
 ### Adicionado
 
+- **B8 — Segurança**: checklist S1-S8 da Seção 9.1 do plano.
+  - **S4 (o item que faltava)**: migration `supabase/migrations/0004_rls_policies.sql` habilita RLS em todas as 9 tabelas. `anon` só tem `SELECT` no catálogo (papeis/processos/fluxos/atividades/fluxo_etapas/colaboradores) e `INSERT`/`UPDATE` (nunca `SELECT`) em `sessoes`/`corridas`/`medicoes` — fecha o achado registrado no B3, onde a chave anon conseguia ler `medicoes` livremente.
+  - **Regressão descoberta e corrigida ao aplicar o S4**: com `SELECT` negado, todo insert que encadeava `.select("id").single()` (para recuperar o id gerado e linká-lo em inserts seguintes) passou a falhar com `"new row violates row-level security policy"`. Não é um bug da policy — é o comportamento documentado do Postgres: `RETURNING` (o que `.select()` do supabase-js gera) está sujeito às policies de `SELECT`, então sem uma policy de leitura o próprio insert não consegue "ler de volta" a linha que acabou de criar. Corrigido gerando o `id` no cliente (`crypto.randomUUID()`) e enviando-o explicitamente no insert, eliminando a necessidade do `RETURNING` — sem abrir mão do `SELECT` negado. Ajustado em `SessaoForm.tsx` (B2), `CorridaFluxo.tsx` (B4) e `CicloAtividade.tsx` (B5); `CronometroAvulsa.tsx` (B3) já não dependia de `RETURNING` e não precisou de mudança.
+  - **S2**: `public/robots.txt` (`Disallow: /`) e header `X-Robots-Tag: noindex, nofollow` em todas as rotas via `headers()` do `next.config.ts`.
+  - **S1, S3, S5, S6, S7, S8**: já satisfeitos pelos blocos anteriores — token de 32 chars validado no `proxy`/layout (B0/B2), painel atrás de PIN com cookie `httpOnly`+`secure`+`sameSite=strict` (B6), `SUPABASE_SERVICE_ROLE_KEY` confirmada ausente de `.next/static` (grep), leituras do painel exclusivamente via `supabase-admin` no servidor (B6), aviso de transparência na abertura de sessão (B2), nenhum `console.log`/`console.error` no código da aplicação.
+
+### Verificado
+
+- `npm run build` sem erros.
+- RLS testado via curl com a chave anon: `SELECT` em `medicoes`/`sessoes`/`corridas` retorna `[]`; catálogo continua legível.
+- Após a correção do `RETURNING`, o insert de sessão (mesmo formato de requisição que o app agora envia — `id` explícito, sem `Prefer: return=representation`) confirmado funcionando com `HTTP 201`, e a linha confirmada no banco via service role.
+- **Nota sobre o critério de aceite "acesso a /painel sem PIN retorna 401"**: a implementação usa redirect (307) para a tela de login em vez de um 401 cru, decisão tomada no B6 para dar uma saída útil a quem tentar acessar sem sessão (um 401 puro não teria como logar em seguida). O efeito de segurança pretendido — acesso ao conteúdo do painel bloqueado sem PIN — está garantido; documentando a diferença de status HTTP para não gerar confusão numa checagem futura.
+
 - **B7 — Export CSV**: `GET /api/painel/export`, Route Handler (não Server Action — é leitura pública de arquivo via link, não mutação disparada de formulário) protegido pelo mesmo cookie do painel (verificado explicitamente dentro do handler, já que o `proxy.ts` só cobre `/painel/:path*` e não `/api/painel/*`). Gera um CSV achatado com todas as 27 colunas da Seção 8.4 do plano (incluindo `fluxo`, resolvida via `corridas.fluxo_id` para medições de corrida, em branco para AVULSA/CICLO), separador `;`, BOM UTF-8 (`String.fromCharCode(0xfeff)`, evita ambiguidade de caractere literal no source) e escaping RFC-4180 (campos com `;`, `"` ou quebra de linha entre aspas, aspas internas duplicadas). Inclui todos os status (`VALIDA`, `DESCARTADA`, `SUSPEITA` — R05), sem filtro algum: a decisão de o que usar na análise é do analista, não da ferramenta. Link "exportar CSV" adicionado ao cabeçalho do painel.
 
 ### Verificado

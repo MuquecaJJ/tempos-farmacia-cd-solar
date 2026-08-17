@@ -148,24 +148,22 @@ export function CicloAtividade({
     vibrar();
     setSalvando(true);
 
-    const { data: corrida, error: corridaError } = await supabaseBrowser
-      .from("corridas")
-      .insert({
-        sessao_id: sessao!.id,
-        fluxo_id: null,
-        atividade_id: atividade.id,
-        modo: "CICLO",
-        quantidade: ciclos.length,
-        unidade: atividade.unidade,
-        iniciada_em: corridaIniciadaEmRef.current,
-        encerrada_em: new Date().toISOString(),
-        observacao: observacao.trim() || null,
-        status,
-      })
-      .select("id")
-      .single();
+    const corridaId = crypto.randomUUID();
+    const { error: corridaError } = await supabaseBrowser.from("corridas").insert({
+      id: corridaId,
+      sessao_id: sessao!.id,
+      fluxo_id: null,
+      atividade_id: atividade.id,
+      modo: "CICLO",
+      quantidade: ciclos.length,
+      unidade: atividade.unidade,
+      iniciada_em: corridaIniciadaEmRef.current,
+      encerrada_em: new Date().toISOString(),
+      observacao: observacao.trim() || null,
+      status,
+    });
 
-    if (corridaError || !corrida) {
+    if (corridaError) {
       setSalvando(false);
       setErro(
         status === "VALIDA"
@@ -178,7 +176,7 @@ export function CicloAtividade({
     if (ciclos.length > 0) {
       const linhas = ciclos.map((c, index) => ({
         sessao_id: sessao!.id,
-        corrida_id: corrida.id,
+        corrida_id: corridaId,
         atividade_id: atividade.id,
         ordem: index + 1,
         iniciada_em: c.iniciada_em,

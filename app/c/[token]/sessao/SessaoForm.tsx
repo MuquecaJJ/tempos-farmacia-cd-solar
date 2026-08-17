@@ -116,23 +116,21 @@ export function SessaoForm({
     }
 
     setSalvando(true);
-    const { data, error } = await supabaseBrowser
-      .from("sessoes")
-      .insert({
-        colaborador_id: colaboradorId,
-        observador_id: precisaObservador ? observadorId : null,
-        processo_id: processoId,
-        papel_id: papelId,
-        turno,
-        tipo_coleta: tipoColeta,
-        dispositivo,
-      })
-      .select("id")
-      .single();
+    const id = crypto.randomUUID();
+    const { error } = await supabaseBrowser.from("sessoes").insert({
+      id,
+      colaborador_id: colaboradorId,
+      observador_id: precisaObservador ? observadorId : null,
+      processo_id: processoId,
+      papel_id: papelId,
+      turno,
+      tipo_coleta: tipoColeta,
+      dispositivo,
+    });
 
     setSalvando(false);
 
-    if (error || !data) {
+    if (error) {
       setErro("Não foi possível abrir a sessão. Tente novamente.");
       return;
     }
@@ -143,7 +141,7 @@ export function SessaoForm({
     const observador = colaboradores.find((c) => c.id === observadorId) ?? null;
 
     salvarSessaoAtiva({
-      id: data.id,
+      id,
       colaboradorId,
       colaboradorNome: colaborador.nome,
       processoId,
