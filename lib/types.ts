@@ -2,6 +2,7 @@ export type Turno = "MANHA" | "TARDE" | "NOITE";
 export type TipoColeta = "AUTO" | "OBSERVADO";
 export type ModoColeta = "FLUXO" | "CICLO" | "AVULSA";
 export type Natureza = "Rotina" | "Eventual";
+export type StatusRegistro = "VALIDA" | "DESCARTADA" | "SUSPEITA";
 
 export type Papel = {
   id: number;
