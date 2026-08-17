@@ -76,6 +76,7 @@ export function CorridaFluxo({
   const [medicoes, setMedicoes] = useState<MedicaoPendente[]>([]);
   const [ciclosEtapa, setCiclosEtapa] = useState<CicloEtapa[]>([]);
   const [quantidade, setQuantidade] = useState("");
+  const [quantidadesPorAtividade, setQuantidadesPorAtividade] = useState<Record<number, string>>({});
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -150,6 +151,22 @@ export function CorridaFluxo({
   const ehUltimaEtapa =
     grupoIndex === totalGrupos - 1 && subIndex === subFila.length - 1;
 
+  // Nome da próxima etapa, exibido durante a medição para o observador se
+  // preparar com antecedência para encerrar a etapa atual.
+  const proximaEtapaNome = (() => {
+    if (subIndex + 1 < subFila.length) {
+      return atividadesPorId.get(subFila[subIndex + 1].atividade_id)?.nome ?? null;
+    }
+    if (grupoIndex + 1 < totalGrupos) {
+      const opcoes = grupos[grupoIndex + 1].opcoes;
+      const nomes = opcoes
+        .map((o) => atividadesPorId.get(o.atividade_id)?.nome)
+        .filter((nome): nome is string => Boolean(nome));
+      return nomes.length > 0 ? nomes.join(" ou ") : null;
+    }
+    return null;
+  })();
+
   const etapaElapsedMs =
     fase === "RODANDO" && etapaInicioPerfRef.current !== null
       ? performance.now() - etapaInicioPerfRef.current
@@ -166,6 +183,24 @@ export function CorridaFluxo({
     fase === "INTERROMPIDO" && pausaInicioPerfRef.current !== null
       ? performance.now() - pausaInicioPerfRef.current
       : 0;
+
+  // Só F4 e F8 (corrida = lote diário) coletam uma quantidade geral da
+  // corrida (§3.2 do plano) — os demais fluxos capturam quantidade por
+  // atividade (abaixo), não uma soma solta ao final.
+  const exigeQuantidadeCorrida =
+    fluxo.nome === "Preparação das Rotas" || fluxo.nome === "Dispensação de Pendências";
+
+  // Uma atividade pede quantidade própria na confirmação quando foi de fato
+  // executada nesta corrida (apareceu em `medicoes`), requer_quantidade e
+  // não é CICLO_EM_FLUXO (nesse caso a quantidade já é o nº de ciclos).
+  const idsAtividadesExecutadas = Array.from(
+    new Set(medicoes.filter((m) => !m.eh_interrupcao).map((m) => m.atividade_id))
+  );
+  const atividadesComQuantidade = idsAtividadesExecutadas
+    .map((id) => atividadesPorId.get(id))
+    .filter(
+      (a): a is Atividade => Boolean(a) && a!.requer_quantidade && a!.modo !== "CICLO_EM_FLUXO"
+    );
 
   // Etapas com modo_etapa = CICLO_EM_FLUXO viram um sub-cronômetro repetível
   // (1 medição por ciclo, ex.: por item etiquetado) em vez de uma medição
@@ -398,10 +433,24 @@ export function CorridaFluxo({
   async function finalizar(status: "VALIDA" | "DESCARTADA") {
     setErro(null);
 
-    const qtd = Number(quantidade);
-    if (!quantidade || !Number.isFinite(qtd) || qtd < 0) {
-      setErro("Informe a quantidade da corrida.");
-      return;
+    let qtdCorrida: number | null = null;
+    if (exigeQuantidadeCorrida) {
+      qtdCorrida = Number(quantidade);
+      if (!quantidade || !Number.isFinite(qtdCorrida) || qtdCorrida < 0) {
+        setErro("Informe a quantidade da corrida.");
+        return;
+      }
+    }
+
+    const quantidadesFinais = new Map<number, number>();
+    for (const a of atividadesComQuantidade) {
+      const valor = quantidadesPorAtividade[a.id];
+      const num = Number(valor);
+      if (!valor || !Number.isFinite(num) || num < 0) {
+        setErro(`Informe a quantidade de "${a.nome}".`);
+        return;
+      }
+      quantidadesFinais.set(a.id, num);
     }
 
     vibrar();
@@ -414,8 +463,8 @@ export function CorridaFluxo({
       fluxo_id: fluxo.id,
       atividade_id: null,
       modo: "FLUXO",
-      quantidade: qtd,
-      unidade: fluxo.unidade_corrida,
+      quantidade: qtdCorrida,
+      unidade: exigeQuantidadeCorrida ? fluxo.unidade_corrida : null,
       iniciada_em: corridaIniciadaEmRef.current,
       encerrada_em: new Date().toISOString(),
       observacao: observacao.trim() || null,
@@ -435,22 +484,30 @@ export function CorridaFluxo({
     }
 
     if (medicoes.length > 0) {
-      const linhas = medicoes.map((m) => ({
-        sessao_id: sessao!.id,
-        corrida_id: corridaId,
-        atividade_id: m.atividade_id,
-        ordem_etapa: m.ordem_etapa,
-        ordem: m.ordem,
-        iniciada_em: m.iniciada_em,
-        encerrada_em: m.encerrada_em,
-        duracao_ms: m.duracao_ms,
-        quantidade: m.quantidade ?? null,
-        unidade: m.unidade ?? null,
-        observacao: null,
-        status,
-        eh_interrupcao: m.eh_interrupcao ?? false,
-        motivo_interrupcao: m.motivo_interrupcao ?? null,
-      }));
+      const linhas = medicoes.map((m) => {
+        const quantidadeEtapa = quantidadesFinais.has(m.atividade_id)
+          ? quantidadesFinais.get(m.atividade_id)!
+          : (m.quantidade ?? null);
+        const unidadeEtapa = quantidadesFinais.has(m.atividade_id)
+          ? (atividadesPorId.get(m.atividade_id)?.unidade ?? null)
+          : (m.unidade ?? null);
+        return {
+          sessao_id: sessao!.id,
+          corrida_id: corridaId,
+          atividade_id: m.atividade_id,
+          ordem_etapa: m.ordem_etapa,
+          ordem: m.ordem,
+          iniciada_em: m.iniciada_em,
+          encerrada_em: m.encerrada_em,
+          duracao_ms: m.duracao_ms,
+          quantidade: quantidadeEtapa,
+          unidade: unidadeEtapa,
+          observacao: null,
+          status,
+          eh_interrupcao: m.eh_interrupcao ?? false,
+          motivo_interrupcao: m.motivo_interrupcao ?? null,
+        };
+      });
       const { error: medicoesError } = await supabaseBrowser.from("medicoes").insert(linhas);
       if (medicoesError) {
         setSalvando(false);
@@ -565,6 +622,11 @@ export function CorridaFluxo({
             total {formatarTempo(corridaElapsedMs)}
           </p>
         </div>
+        {proximaEtapaNome && (
+          <p className="text-center text-xs text-neutral-500">
+            Próxima etapa: <span className="font-medium text-neutral-600">{proximaEtapaNome}</span>
+          </p>
+        )}
         <button
           onClick={proximaEtapa}
           className="min-h-[40vh] w-full rounded-lg bg-[#5F0040] text-2xl font-bold text-white"
@@ -612,6 +674,11 @@ export function CorridaFluxo({
             {formatarTempo(corridaElapsedMs)}
           </p>
         </div>
+        {proximaEtapaNome && (
+          <p className="text-center text-xs text-neutral-500">
+            Próxima etapa: <span className="font-medium text-neutral-600">{proximaEtapaNome}</span>
+          </p>
+        )}
 
         <button
           onClick={registrarCicloEtapa}
@@ -720,20 +787,41 @@ export function CorridaFluxo({
         </p>
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-neutral-600">
-          Quantidade ({fluxo.unidade_corrida})
-        </label>
-        <input
-          type="number"
-          inputMode="numeric"
-          step={1}
-          min={0}
-          value={quantidade}
-          onChange={(e) => setQuantidade(e.target.value)}
-          className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base"
-        />
-      </div>
+      {atividadesComQuantidade.map((a) => (
+        <div key={a.id}>
+          <label className="mb-1 block text-sm font-medium text-neutral-600">
+            {a.nome} {a.unidade ? `(${a.unidade})` : ""}
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            step={1}
+            min={0}
+            value={quantidadesPorAtividade[a.id] ?? ""}
+            onChange={(e) =>
+              setQuantidadesPorAtividade((prev) => ({ ...prev, [a.id]: e.target.value }))
+            }
+            className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base"
+          />
+        </div>
+      ))}
+
+      {exigeQuantidadeCorrida && (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-600">
+            Quantidade ({fluxo.unidade_corrida})
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            step={1}
+            min={0}
+            value={quantidade}
+            onChange={(e) => setQuantidade(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base"
+          />
+        </div>
+      )}
 
       <div>
         <label className="mb-1 block text-sm font-medium text-neutral-600">
