@@ -2,6 +2,19 @@
 
 Todas as mudanças relevantes do projeto Cronômetro Operacional (Farmácia / CD Solar) ficam registradas aqui, em ordem cronológica reversa. Referências de bloco (B0, B1...) seguem a Seção 12 do `PLANO_CRONOANALISE.md`.
 
+## 2026-08-17
+
+### Adicionado
+
+- **B3 — Modo AVULSA**: rota `/c/[token]/avulsa/[id]` para o cronômetro de atividade isolada. `page.tsx` (Server Component) busca a atividade pelo `id`, faz `notFound()` se inexistente/inativa/fora do modo `AVULSA`. `CronometroAvulsa.tsx` (Client Component) com máquina de estados IDLE → RODANDO → CONFIRMACAO: cronômetro em fonte mono (`MM:SS.d`) calculado sempre a partir de `performance.now()` (R01), Wake Lock API com reaquisição em `visibilitychange`, `beforeunload` ativo durante RODANDO, vibração (`navigator.vibrate`) nos toques que gravam algo. Tela de confirmação com quantidade (inteira, só quando `atividade.requer_quantidade`) e observação opcional, botões SALVAR/DESCARTAR (nunca deleta, R02) gravando direto em `medicoes` via `supabaseBrowser` (mesmo padrão client-side do B2, sem Route Handler). Adicionado também um link discreto "cancelar" durante RODANDO (fora da especificação original, decisão tomada em conjunto com o usuário): aborta sem gravar nenhum registro, já que a corrida nunca chegou a PARAR.
+
+### Verificado
+
+- `npm run build` sem erros, incluindo a nova rota dinâmica `/c/[token]/avulsa/[id]`.
+- Fluxo completo testado com automação de navegador (Claude in Chrome) contra o dev server e o banco Supabase real: sessão → catálogo → atividade com quantidade obrigatória (nº34, salvar com validação de campo vazio) → atividade sem quantidade (nº10, salvar/descartar/cancelar). Os 4 caminhos conferidos diretamente no banco via REST: `duracao_ms` consistente com o tempo cronometrado, `corrida_id = null`, `quantidade`/`unidade` corretos, `status` (`VALIDA`/`DESCARTADA`) correto, e nenhum registro gravado no caminho "cancelar".
+- **Achado de segurança fora do escopo do B3**: durante a verificação, a chave anon conseguiu fazer `SELECT` em `medicoes` via REST — a S4 (Seção 9.1 do plano) prevê `SELECT` negado nessa tabela para o papel `anon`. Como as policies de RLS não estão commitadas nas migrations, este é um item pendente para o **B8 — Segurança**, não uma regressão do B3.
+- Sessão e medições de teste criadas durante a automação foram removidas do banco (via service role) após validação, para não contaminar a amostra real.
+
 ## 2026-08-14
 
 ### Adicionado
