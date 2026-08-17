@@ -166,7 +166,7 @@ Taxonomia de `tipo_atividade` — **6 valores fechados**: `Manuseio Físico` · 
 |---|---|---|---|---|---|---|
 | SEDIS-001-01 | 1 | Receber o fornecedor e conferir os dados da nota fiscal | Conferência/Verificação | FLUXO | — | 30 |
 | SEDIS-001-02 | 2 | Conferir os itens recebidos e segregados na área de recebimento | Conferência/Verificação | FLUXO | itens | 30 |
-| SEDIS-001-03 | 3 | Colar etiqueta de identificação dos volumes recebidos | Manuseio Físico | FLUXO *(opcional)* | itens | 20 |
+| SEDIS-001-03 | 3 | Colar etiqueta de identificação dos volumes recebidos | Manuseio Físico | FLUXO *(opcional)* | volumes | 20 |
 | SEDIS-001-04 | 4 | Direcionar os insumos por tipo (etiquetagem ou armazenamento) | Manuseio Físico | FLUXO | volumes | 30 |
 
 `SEDIS-001-03`: `opcional = true`, `condicao = 'Somente dieta e medicamento'`. Exibir o texto na tela; o botão "Pular etapa" cobre o caso.

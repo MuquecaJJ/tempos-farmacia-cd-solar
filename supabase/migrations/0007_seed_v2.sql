@@ -52,7 +52,7 @@ insert into fluxos (processo_id, nome, unidade_corrida, ordem) values
 insert into atividades (codigo, processo_id, nome, tipo_atividade, natureza, modo, unidade, requer_quantidade, meta_amostras) values
 ('SEDIS-001-01', (select id from processos where codigo='SEDIS-001'), 'Receber o fornecedor e conferir os dados da nota fiscal', 'Conferência/Verificação', 'Rotina', 'FLUXO', null, false, 30),
 ('SEDIS-001-02', (select id from processos where codigo='SEDIS-001'), 'Conferir os itens recebidos e segregados na área de recebimento', 'Conferência/Verificação', 'Rotina', 'FLUXO', 'itens', true, 30),
-('SEDIS-001-03', (select id from processos where codigo='SEDIS-001'), 'Colar etiqueta de identificação dos volumes recebidos', 'Manuseio Físico', 'Rotina', 'FLUXO', 'itens', true, 20),
+('SEDIS-001-03', (select id from processos where codigo='SEDIS-001'), 'Colar etiqueta de identificação dos volumes recebidos', 'Manuseio Físico', 'Rotina', 'FLUXO', 'volumes', true, 20),
 ('SEDIS-001-04', (select id from processos where codigo='SEDIS-001'), 'Direcionar os insumos por tipo (etiquetagem ou armazenamento)', 'Manuseio Físico', 'Rotina', 'FLUXO', 'volumes', true, 30);
 
 -- SEDIS-002 — Fracionamento e Etiquetagem (F2, corrida = 1 lote)
